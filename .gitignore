@@ -1,1 +1,14 @@
-.worktrees/
+# Default deny: this Vault only tracks the project surface below.
+/*
+!/.gitignore
+!/AGENTS.md
+!/plugin/
+!/plugin/**
+!/docs/
+!/docs/**
+!/Codex Results/
+!/Codex Results/**
+
+/.worktrees/
+/plugin/node_modules/
+/plugin/coverage/
