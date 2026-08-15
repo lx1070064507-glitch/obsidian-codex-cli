@@ -1,4 +1,4 @@
-import { App, Modal, Setting } from "obsidian";
+import { App, Modal, Notice, Setting } from "obsidian";
 
 import type { ApprovalPrompt } from "../domain.js";
 import type { ApprovalChoice } from "../codex/codex-client.js";
@@ -87,8 +87,9 @@ export class SaveResultModal extends Modal {
       save.disabled = true;
       void this.onSave({ title: this.title, content: this.content })
         .then(() => this.close())
-        .catch(() => {
+        .catch((error) => {
           save.disabled = false;
+          new Notice(errorMessage(error));
         });
     });
   }
@@ -143,8 +144,9 @@ export class CommitResultsModal extends Modal {
       confirm.disabled = true;
       void this.commit([...this.selected], this.message)
         .then(() => this.close())
-        .catch(() => {
+        .catch((error) => {
           confirm.disabled = false;
+          new Notice(errorMessage(error));
         });
     });
   }
@@ -160,4 +162,8 @@ export class CommitResultsModal extends Modal {
     const paths = [...this.selected];
     this.previewEl.setText(paths.length === 0 ? "选择成果以预览差异" : await this.preview(paths));
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

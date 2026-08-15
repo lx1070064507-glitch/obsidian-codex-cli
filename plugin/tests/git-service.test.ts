@@ -77,6 +77,11 @@ describe("GitService", () => {
         "git",
         ["diff", "--no-ext-diff", "--", "Codex Results/Tracked.md"],
         { exitCode: 0, stdout: "tracked diff", stderr: "" }
+      )
+      .withResult(
+        "git",
+        ["diff", "--cached", "--no-ext-diff", "--", "Codex Results/Tracked.md"],
+        { exitCode: 0, stdout: "staged diff", stderr: "" }
       );
     const service = new GitService("D:\\Vault", "git", runner, async (path) => `full:${path}`);
 
@@ -86,6 +91,7 @@ describe("GitService", () => {
     ]);
 
     expect(preview).toContain("tracked diff");
+    expect(preview).toContain("staged diff");
     expect(preview).toContain("full:Codex Results/New.md");
   });
 });

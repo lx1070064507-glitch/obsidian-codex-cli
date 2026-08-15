@@ -46,7 +46,8 @@ export class ResultStore {
   private async appendLink(result: ResultNote): Promise<void> {
     const note = await this.vault.read(result.relatedNote);
     const target = result.path.slice(0, -3);
-    const link = `[[${target}|${result.title}]]`;
+    const alias = sanitizeFileStem(result.title) || "成果";
+    const link = `[[${target}|${alias}]]`;
     if (!note.includes(link)) {
       await this.vault.write(result.relatedNote, `${note.replace(/\s*$/, "")}\n\n${link}\n`);
     }

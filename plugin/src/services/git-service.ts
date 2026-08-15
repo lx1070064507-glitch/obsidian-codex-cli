@@ -56,9 +56,14 @@ export class GitService {
     const sections: string[] = [];
 
     if (tracked.length > 0) {
-      const diff = await this.runGit(["diff", "--no-ext-diff", "--", ...tracked]);
-      if (diff.stdout.length > 0) {
-        sections.push(diff.stdout);
+      const [workingDiff, stagedDiff] = await Promise.all([
+        this.runGit(["diff", "--no-ext-diff", "--", ...tracked]),
+        this.runGit(["diff", "--cached", "--no-ext-diff", "--", ...tracked])
+      ]);
+      for (const diff of [workingDiff.stdout, stagedDiff.stdout]) {
+        if (diff.length > 0) {
+          sections.push(diff);
+        }
       }
     }
     for (const path of untracked) {

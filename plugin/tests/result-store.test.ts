@@ -42,3 +42,17 @@ it("使用不冲突的成果路径并且不重复追加链接", async () => {
   const note = await vault.read("项目.md");
   expect(note.match(/\[\[Codex Results\/2026-08-15-最终方案-2\|最终方案\]\]/g)).toHaveLength(1);
 });
+
+it("净化成果链接别名中的 Windows 和 Wikilink 禁止字符", async () => {
+  const vault = new MemoryVault({ "项目.md": "# 项目\n" });
+  const store = new ResultStore(vault, () => "2026-08-15T10:00:00.000Z");
+
+  await store.create({
+    title: "AUX|方案",
+    sourceChat: "Codex Chats/需求讨论.md",
+    relatedNote: "项目.md",
+    content: "成果"
+  });
+
+  expect(await vault.read("项目.md")).toContain("|AUX-方案]]");
+});

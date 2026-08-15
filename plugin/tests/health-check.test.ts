@@ -83,6 +83,20 @@ describe("HealthCheck", () => {
     expect(status.readyToCommit).toBe(false);
   });
 
+  it("Vault 仅位于父级仓库内时禁止提交", async () => {
+    const runner = readyRunner().withResult(
+      "git",
+      ["rev-parse", "--show-toplevel"],
+      { exitCode: 0, stdout: "D:/Parent\n", stderr: "" }
+    );
+
+    const status = await new HealthCheck(runner).run(options);
+
+    expect(status.repositoryRoot).toBe("D:/Parent");
+    expect(status.readyToCommit).toBe(false);
+    expect(status.errors).toContain("当前 Vault 必须是 Git 仓库根目录");
+  });
+
   it("非 Windows 平台拒绝聊天", async () => {
     const status = await new HealthCheck(readyRunner(), "linux").run(options);
 

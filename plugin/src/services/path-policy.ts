@@ -27,5 +27,12 @@ export function assertResultPath(path: string): string {
 }
 
 export function sanitizeFileStem(stem: string): string {
-  return stem.replace(WINDOWS_FORBIDDEN_CHARACTERS, "-").replace(/\s+/g, " ").trim();
+  const sanitized = stem
+    .replace(WINDOWS_FORBIDDEN_CHARACTERS, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[. ]+$/g, "");
+  return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(sanitized)
+    ? `${sanitized}-`
+    : sanitized;
 }

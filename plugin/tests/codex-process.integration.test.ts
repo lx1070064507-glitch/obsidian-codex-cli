@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { expect, it } from "vitest";
@@ -63,7 +64,7 @@ handshakeTest("本机健康检查识别 Codex 登录、版本和 Git 仓库", as
     throw new Error("缺少 CODEX_PATH");
   }
   const status = await new HealthCheck(new NodeProcessRunner()).run({
-    vaultRoot: process.cwd(),
+    vaultRoot: resolve(process.cwd(), ".."),
     codexPath,
     gitPath: "git"
   });

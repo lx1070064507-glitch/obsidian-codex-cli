@@ -1,5 +1,6 @@
 import type { HealthStatus } from "../domain.js";
 import type { ProcessResult, ProcessRunner } from "../platform/process-runner.js";
+import { win32 } from "node:path";
 
 export interface HealthCheckOptions {
   vaultRoot: string;
@@ -33,8 +34,12 @@ export class HealthCheck {
     const repositoryRoot = succeeded(repositoryResult) && repositoryResult.stdout.trim().length > 0
       ? repositoryResult.stdout.trim()
       : null;
+    const repositoryMatchesVault = repositoryRoot !== null && sameWindowsPath(
+      repositoryRoot,
+      options.vaultRoot
+    );
     const readyToChat = windows && codexCompatible && loggedIn;
-    const readyToCommit = readyToChat && gitFound && repositoryRoot !== null;
+    const readyToCommit = readyToChat && gitFound && repositoryMatchesVault;
     const errors: string[] = [];
 
     if (!windows) {
@@ -52,6 +57,8 @@ export class HealthCheck {
       errors.push("未找到 Git");
     } else if (repositoryRoot === null) {
       errors.push("当前 Vault 不是 Git 仓库");
+    } else if (!repositoryMatchesVault) {
+      errors.push("当前 Vault 必须是 Git 仓库根目录");
     }
 
     return {
@@ -88,4 +95,9 @@ function succeeded(result: ProcessResult | null): result is ProcessResult {
 
 function extractCodexVersion(stdout: string): string | null {
   return /^codex-cli ([^\s]+)$/m.exec(stdout)?.[1] ?? null;
+}
+
+function sameWindowsPath(left: string, right: string): boolean {
+  return win32.normalize(left).replace(/[\\/]+$/, "").toLowerCase()
+    === win32.normalize(right).replace(/[\\/]+$/, "").toLowerCase();
 }

@@ -84,7 +84,8 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
     this.shutdownRuntime();
     this.gitService = null;
     this.baselineCaptured = false;
-    await this.recheckHealth();
+    this.healthStatus = null;
+    await this.refreshViews();
   }
 
   async recheckHealth(): Promise<void> {
@@ -94,7 +95,7 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
       codexPath: this.settings.codexPath,
       gitPath: this.settings.gitPath
     });
-    if (this.healthStatus.gitPath !== null && this.healthStatus.repositoryRoot !== null && this.vaultFiles !== null) {
+    if (this.healthStatus.readyToCommit && this.vaultFiles !== null) {
       if (this.gitService === null) {
         this.gitService = new GitService(
           this.vaultRoot,
@@ -102,8 +103,15 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
           runner,
           (path) => this.requireVaultFiles().read(path)
         );
-        await this.gitService.captureBaseline();
-        this.baselineCaptured = true;
+        try {
+          await this.gitService.captureBaseline();
+          this.baselineCaptured = true;
+        } catch (error) {
+          this.gitService = null;
+          this.baselineCaptured = false;
+          this.healthStatus.readyToCommit = false;
+          this.healthStatus.errors.push(errorMessage(error));
+        }
       }
     } else {
       this.gitService = null;
@@ -124,11 +132,12 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
     const controller = await this.ensureRuntime();
     const transcripts = this.requireTranscripts();
     const paths = await transcripts.list();
-    const latest = paths.at(-1);
+    const sessions = await Promise.all(paths.map((path) => transcripts.load(path)));
+    const latest = sessions.sort((left, right) => left.updatedAt.localeCompare(right.updatedAt)).at(-1);
     if (latest === undefined) {
       throw new Error("没有可恢复的本地会话");
     }
-    const session = await controller.resumeChat(await transcripts.load(latest));
+    const session = await controller.resumeChat(latest);
     await this.refreshViews();
     return session;
   }
@@ -275,4 +284,8 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
     }
     return this.results;
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

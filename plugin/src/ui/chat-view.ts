@@ -15,6 +15,8 @@ export class ChatView extends ItemView {
   private sendButton: HTMLButtonElement | null = null;
   private stopButton: HTMLButtonElement | null = null;
   private refreshing = false;
+  private messageSignature: string | null = null;
+  private resultSignature: string | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -133,8 +135,14 @@ export class ChatView extends ItemView {
     if (this.messagesEl === null) {
       return;
     }
+    const entries = this.plugin.currentSession?.entries ?? [];
+    const signature = JSON.stringify({ canSaveResult, entries });
+    if (signature === this.messageSignature) {
+      return;
+    }
+    this.messageSignature = signature;
     this.messagesEl.empty();
-    for (const entry of this.plugin.currentSession?.entries ?? []) {
+    for (const entry of entries) {
       const item = this.messagesEl.createDiv({ cls: `codex-message is-${entry.role}` });
       item.createDiv({ cls: "codex-message-role", text: roleLabel(entry.role) });
       item.createDiv({ cls: "codex-message-content", text: entry.content });
@@ -152,6 +160,11 @@ export class ChatView extends ItemView {
       return;
     }
     const paths = await this.plugin.listResults();
+    const signature = JSON.stringify(paths);
+    if (signature === this.resultSignature) {
+      return;
+    }
+    this.resultSignature = signature;
     this.resultsEl.empty();
     for (const path of paths) {
       const button = this.resultsEl.createEl("button", { cls: "codex-result-link", text: path });
