@@ -29,7 +29,7 @@ describe("CodexClient", () => {
       params: expect.objectContaining({
         cwd: "D:\\Vault",
         runtimeWorkspaceRoots: ["D:\\Vault"],
-        approvalPolicy: "on-request",
+        approvalPolicy: "untrusted",
         approvalsReviewer: "user",
         sandbox: "workspace-write",
         config: { web_search: "disabled" }
@@ -49,7 +49,7 @@ describe("CodexClient", () => {
         threadId: "thread-old",
         cwd: "D:\\Vault",
         runtimeWorkspaceRoots: ["D:\\Vault"],
-        approvalPolicy: "on-request",
+        approvalPolicy: "untrusted",
         approvalsReviewer: "user",
         sandbox: "workspace-write"
       })

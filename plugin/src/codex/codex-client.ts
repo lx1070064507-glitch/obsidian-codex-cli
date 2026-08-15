@@ -223,7 +223,7 @@ export class CodexClient {
     return {
       cwd: this.vaultRoot,
       runtimeWorkspaceRoots: [this.vaultRoot],
-      approvalPolicy: "on-request",
+      approvalPolicy: "untrusted",
       approvalsReviewer: "user",
       sandbox: "workspace-write",
       config: { web_search: "disabled" }
