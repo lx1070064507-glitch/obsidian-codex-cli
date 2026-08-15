@@ -1,6 +1,6 @@
 import { Plugin } from "obsidian";
 
-export default class CodexCliPlugin extends Plugin {
+export default class ObsidianCodexCliPlugin extends Plugin {
   async onload(): Promise<void> {}
 
   onunload(): void {}

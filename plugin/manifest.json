@@ -3,7 +3,7 @@
   "name": "Codex CLI",
   "version": "0.1.0",
   "minAppVersion": "1.8.0",
-  "description": "在 Obsidian 中使用 Codex CLI 的本地插件。",
+  "description": "在 Obsidian 中运行本地 Codex 会话并保存可提交成果。",
   "author": "Liang Xu",
   "isDesktopOnly": true
 }
