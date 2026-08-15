@@ -3,7 +3,7 @@ import { ItemView, Notice, setIcon, type WorkspaceLeaf } from "obsidian";
 import type { ChatEntry } from "../domain.js";
 import type ObsidianCodexCliPlugin from "../main.js";
 import { CommitResultsModal, SaveResultModal } from "./modals.js";
-import { deriveControls } from "./view-model.js";
+import { deriveControls, handleComposerShortcut } from "./view-model.js";
 
 export const CHAT_VIEW_TYPE = "obsidian-codex-cli-chat";
 
@@ -97,15 +97,13 @@ export class ChatView extends ItemView {
     this.messagesEl = this.contentEl.createDiv({ cls: "codex-messages" });
 
     const composer = this.contentEl.createDiv({ cls: "codex-composer" });
-    this.inputEl = composer.createEl("textarea", { cls: "codex-input" });
-    this.inputEl.rows = 3;
-    this.inputEl.addEventListener("input", () => void this.refresh());
-    this.inputEl.addEventListener("keydown", (event) => {
-      if (event.ctrlKey && event.key === "Enter") {
-        event.preventDefault();
-        void this.send();
-      }
-    });
+    const input = composer.createEl("textarea", { cls: "codex-input" });
+    this.inputEl = input;
+    input.rows = 3;
+    input.addEventListener("input", () => void this.refresh());
+    this.registerDomEvent(window, "keydown", (event) => {
+      handleComposerShortcut(event, input, () => void this.send());
+    }, { capture: true });
     this.sendButton = composer.createEl("button", { cls: "codex-send-button" });
     setIcon(this.sendButton, "send");
     this.sendButton.title = "发送";

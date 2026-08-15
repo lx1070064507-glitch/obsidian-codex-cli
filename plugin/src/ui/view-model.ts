@@ -12,6 +12,16 @@ export interface ControlState {
   canSaveResult: boolean;
 }
 
+export interface ComposerShortcutEvent {
+  ctrlKey: boolean;
+  key: string;
+  code: string;
+  isComposing: boolean;
+  target: EventTarget | null;
+  preventDefault(): void;
+  stopPropagation(): void;
+}
+
 export function deriveControls(input: ControlStateInput): ControlState {
   const ready = input.healthReady && input.hasActiveNote;
   return {
@@ -30,4 +40,20 @@ export function filterResultCandidates(paths: string[]): string[] {
       return false;
     }
   });
+}
+
+export function handleComposerShortcut(
+  event: ComposerShortcutEvent,
+  composer: EventTarget,
+  send: () => void
+): boolean {
+  const isEnter = event.key === "Enter" || event.code === "Enter" || event.code === "NumpadEnter";
+  if (!event.ctrlKey || event.isComposing || !isEnter || event.target !== composer) {
+    return false;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  send();
+  return true;
 }
