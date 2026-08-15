@@ -4,7 +4,14 @@ import { resolve } from "node:path";
 import type { ProcessResult, ProcessRunner } from "../platform/process-runner.js";
 import { assertResultPath } from "./path-policy.js";
 
-const STATUS_ARGS = ["status", "--porcelain=v1", "-z", "--", "Codex Results"];
+const STATUS_ARGS = [
+  "status",
+  "--porcelain=v1",
+  "--untracked-files=all",
+  "-z",
+  "--",
+  "Codex Results"
+];
 
 export interface GitCandidate {
   path: string;

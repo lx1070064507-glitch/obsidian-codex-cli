@@ -7,7 +7,7 @@ describe("GitService", () => {
   it("只暂存用户选择的成果", async () => {
     const runner = new FakeProcessRunner().withResult(
       "git",
-      ["status", "--porcelain=v1", "-z", "--", "Codex Results"],
+      ["status", "--porcelain=v1", "--untracked-files=all", "-z", "--", "Codex Results"],
       { exitCode: 0, stdout: "?? Codex Results/A.md\0?? Codex Results/B.md\0", stderr: "" }
     );
     const service = new GitService("D:\\Vault", "git", runner);
@@ -45,7 +45,7 @@ describe("GitService", () => {
   it("候选成果启动前已有修改时阻止自动提交", async () => {
     const runner = new FakeProcessRunner().withResult(
       "git",
-      ["status", "--porcelain=v1", "-z", "--", "Codex Results"],
+      ["status", "--porcelain=v1", "--untracked-files=all", "-z", "--", "Codex Results"],
       { exitCode: 0, stdout: " M Codex Results/Old.md\0", stderr: "" }
     );
     const service = new GitService("D:\\Vault", "git", runner);
@@ -66,7 +66,7 @@ describe("GitService", () => {
     const runner = new FakeProcessRunner()
       .withResult(
         "git",
-        ["status", "--porcelain=v1", "-z", "--", "Codex Results"],
+        ["status", "--porcelain=v1", "--untracked-files=all", "-z", "--", "Codex Results"],
         {
           exitCode: 0,
           stdout: " M Codex Results/Tracked.md\0?? Codex Results/New.md\0",

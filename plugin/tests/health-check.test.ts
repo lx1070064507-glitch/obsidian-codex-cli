@@ -42,6 +42,19 @@ describe("HealthCheck", () => {
     expect(status.readyToChat).toBe(false);
   });
 
+  it("识别原生 Codex 写入 stderr 的登录状态", async () => {
+    const runner = readyRunner().withResult(
+      "codex.cmd",
+      ["login", "status"],
+      { exitCode: 0, stdout: "", stderr: "Logged in using an API key\n" }
+    );
+
+    const status = await new HealthCheck(runner).run(options);
+
+    expect(status.loggedIn).toBe(true);
+    expect(status.readyToChat).toBe(true);
+  });
+
   it("Git 缺失不影响聊天但禁止提交", async () => {
     const runner = readyRunner().withResult(
       "git",

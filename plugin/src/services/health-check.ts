@@ -23,7 +23,9 @@ export class HealthCheck {
     const codexFound = succeeded(versionResult);
     const codexVersion = codexFound ? extractCodexVersion(versionResult.stdout) : null;
     const codexCompatible = codexFound && /^codex-cli 0\.147\.0$/m.test(versionResult.stdout);
-    const loggedIn = succeeded(loginResult) && /^Logged in\b/im.test(loginResult.stdout);
+    const loggedIn = succeeded(loginResult) && /^Logged in\b/im.test(
+      `${loginResult.stdout}\n${loginResult.stderr}`
+    );
     const gitFound = succeeded(gitResult) && /^git version\b/m.test(gitResult.stdout);
     const repositoryResult = gitFound
       ? await safeRun(this.runner, options.gitPath, ["rev-parse", "--show-toplevel"], options.vaultRoot)

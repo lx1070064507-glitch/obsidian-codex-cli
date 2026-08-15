@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
 import type { ApprovalPrompt } from "../domain.js";
+import { resolveWindowsExecutable } from "../platform/process-runner.js";
 import { JsonRpcTransport } from "./json-rpc.js";
 import type {
   AgentMessageDelta,
@@ -61,6 +62,7 @@ const INITIALIZE_PARAMS: InitializeParams = {
 
 export class CodexClient {
   private initialized = false;
+  private initializeResult: InitializeResult | null = null;
   private threadId: string | null = null;
   private startingTurn: StartingTurn | null = null;
   private pendingTurn: PendingTurn | null = null;
@@ -81,7 +83,8 @@ export class CodexClient {
   }
 
   static fromExecutable(codexPath: string, vaultRoot: string): CodexClient {
-    const child = spawn(codexPath, ["app-server", "--listen", "stdio://"], {
+    const executable = resolveWindowsExecutable(codexPath, vaultRoot);
+    const child = spawn(executable, ["app-server", "--listen", "stdio://"], {
       cwd: vaultRoot,
       shell: false,
       windowsHide: true,
@@ -97,9 +100,9 @@ export class CodexClient {
     return new CodexClient(rpc, vaultRoot, child);
   }
 
-  async initialize(): Promise<void> {
-    if (this.initialized) {
-      return;
+  async initialize(): Promise<InitializeResult> {
+    if (this.initialized && this.initializeResult !== null) {
+      return this.initializeResult;
     }
     const result = await this.rpc.request<InitializeResult>("initialize", INITIALIZE_PARAMS);
     if (result.platformOs !== "windows") {
@@ -107,6 +110,8 @@ export class CodexClient {
     }
     this.rpc.notify("initialized");
     this.initialized = true;
+    this.initializeResult = result;
+    return result;
   }
 
   async startThread(): Promise<{ id: string }> {
