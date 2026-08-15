@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   deriveControls,
   filterResultCandidates,
-  handleComposerShortcut
+  handleComposerShortcut,
+  periodicRefreshScope
 } from "../src/ui/view-model.js";
 
 describe("view model", () => {
   it("运行中禁用发送并启用停止", () => {
-    expect(deriveControls({ healthReady: true, hasActiveNote: true, running: true })).toEqual({
+    expect(deriveControls({ healthReady: true, hasActiveNote: true, hasInput: true, running: true })).toEqual({
       canSend: false,
       canStop: true,
       canSaveResult: false
@@ -16,11 +17,25 @@ describe("view model", () => {
   });
 
   it("健康且存在当前笔记时允许发送", () => {
-    expect(deriveControls({ healthReady: true, hasActiveNote: true, running: false })).toEqual({
+    expect(deriveControls({ healthReady: true, hasActiveNote: true, hasInput: true, running: false })).toEqual({
       canSend: true,
       canStop: false,
       canSaveResult: true
     });
+  });
+
+  it("输入为空时禁用发送", () => {
+    expect(deriveControls({
+      healthReady: true,
+      hasActiveNote: true,
+      hasInput: false,
+      running: false
+    }).canSend).toBe(false);
+  });
+
+  it("仅在回合运行期间请求会话范围的周期刷新", () => {
+    expect(periodicRefreshScope(false)).toBeNull();
+    expect(periodicRefreshScope(true)).toBe("conversation");
   });
 
   it("提交列表只保留成果目录", () => {

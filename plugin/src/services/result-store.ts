@@ -1,4 +1,4 @@
-import type { ResultNote } from "../domain.js";
+import type { ResultNote, SaveResultOutcome } from "../domain.js";
 import type { VaultFiles } from "../platform/vault-files.js";
 import { assertResultPath, sanitizeFileStem } from "./path-policy.js";
 
@@ -13,14 +13,20 @@ export class ResultStore {
     private readonly now: Clock = () => new Date().toISOString()
   ) {}
 
-  async create(input: CreateResultInput): Promise<ResultNote> {
+  async create(input: CreateResultInput): Promise<SaveResultOutcome> {
     await this.vault.mkdir(RESULT_DIRECTORY);
+    await this.vault.read(input.relatedNote);
     const createdAt = this.now();
     const path = await this.uniquePath(createdAt.slice(0, 10), input.title);
     const result: ResultNote = { path, createdAt, ...input };
     await this.vault.write(path, serializeResult(result));
-    await this.appendLink(result);
-    return result;
+    try {
+      const latestNote = await this.vault.read(result.relatedNote);
+      await this.appendLink(result, latestNote);
+      return { result, linkError: null };
+    } catch (error) {
+      return { result, linkError: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   async list(): Promise<string[]> {
@@ -43,8 +49,7 @@ export class ResultStore {
     return path;
   }
 
-  private async appendLink(result: ResultNote): Promise<void> {
-    const note = await this.vault.read(result.relatedNote);
+  private async appendLink(result: ResultNote, note: string): Promise<void> {
     const target = result.path.slice(0, -3);
     const alias = sanitizeFileStem(result.title) || "成果";
     const link = `[[${target}|${alias}]]`;

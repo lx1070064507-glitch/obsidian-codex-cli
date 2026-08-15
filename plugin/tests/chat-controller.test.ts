@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ChatSession, ResultNote } from "../src/domain.js";
+import type { ChatSession, ResultNote, SaveResultOutcome } from "../src/domain.js";
 import {
   ChatController,
   type ChatControllerDependencies,
@@ -89,6 +89,7 @@ describe("ChatController", () => {
     const transcripts = new FakeTranscriptStore();
     const codex = new FakeCodexClient();
     const results = new FakeResultStore();
+    results.linkError = "无法更新关联笔记";
     const commits: Array<[string[], string]> = [];
     const controller = createController({
       transcripts,
@@ -101,15 +102,16 @@ describe("ChatController", () => {
     const reply = controller.session?.entries.find((entry) => entry.role === "assistant");
     expect(reply).toBeDefined();
 
-    const result = await controller.saveResult(reply!.id, "最终方案", "编辑后的成果");
-    await controller.commitResults([result.path], "docs: save result");
+    const outcome = await controller.saveResult(reply!.id, "最终方案", "编辑后的成果");
+    await controller.commitResults([outcome.result.path], "docs: save result");
 
     expect(results.inputs[0]).toMatchObject({
       title: "最终方案",
       relatedNote: "项目.md",
       content: "编辑后的成果"
     });
-    expect(commits).toEqual([[[result.path], "docs: save result"]]);
+    expect(outcome.linkError).toBe("无法更新关联笔记");
+    expect(commits).toEqual([[[outcome.result.path], "docs: save result"]]);
   });
 
   it("错误写入 system 条目并把会话标记为 failed", async () => {
@@ -184,13 +186,17 @@ class FakeTranscriptStore implements TranscriptStorePort {
 
 class FakeResultStore implements ResultStorePort {
   readonly inputs: Array<Omit<ResultNote, "path" | "createdAt">> = [];
+  linkError: string | null = null;
 
-  async create(input: Omit<ResultNote, "path" | "createdAt">): Promise<ResultNote> {
+  async create(input: Omit<ResultNote, "path" | "createdAt">): Promise<SaveResultOutcome> {
     this.inputs.push(input);
     return {
-      ...input,
-      path: "Codex Results/2026-08-15-最终方案.md",
-      createdAt: "2026-08-15T10:00:00.000Z"
+      result: {
+        ...input,
+        path: "Codex Results/2026-08-15-最终方案.md",
+        createdAt: "2026-08-15T10:00:00.000Z"
+      },
+      linkError: this.linkError
     };
   }
 }

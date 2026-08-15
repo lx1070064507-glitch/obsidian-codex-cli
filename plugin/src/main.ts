@@ -170,9 +170,13 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
     if (this.controller === null) {
       throw new Error("尚未开始 Codex 会话");
     }
-    const result = await this.controller.saveResult(entryId, title, content);
-    new Notice("成果已保存");
-    return result;
+    const outcome = await this.controller.saveResult(entryId, title, content);
+    if (outcome.linkError === null) {
+      new Notice("成果已保存");
+    } else {
+      new Notice(`成果已保存至 ${outcome.result.path}，但关联笔记链接写入失败：${outcome.linkError}`);
+    }
+    return outcome.result;
   }
 
   async listResults(): Promise<string[]> {

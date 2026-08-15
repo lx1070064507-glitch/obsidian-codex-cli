@@ -3,6 +3,7 @@ import { assertResultPath } from "../services/path-policy.js";
 export interface ControlStateInput {
   healthReady: boolean;
   hasActiveNote: boolean;
+  hasInput: boolean;
   running: boolean;
 }
 
@@ -11,6 +12,8 @@ export interface ControlState {
   canStop: boolean;
   canSaveResult: boolean;
 }
+
+export type RefreshScope = "full" | "conversation";
 
 export interface ComposerShortcutEvent {
   ctrlKey: boolean;
@@ -25,10 +28,14 @@ export interface ComposerShortcutEvent {
 export function deriveControls(input: ControlStateInput): ControlState {
   const ready = input.healthReady && input.hasActiveNote;
   return {
-    canSend: ready && !input.running,
+    canSend: ready && input.hasInput && !input.running,
     canStop: input.running,
     canSaveResult: ready && !input.running
   };
+}
+
+export function periodicRefreshScope(running: boolean): RefreshScope | null {
+  return running ? "conversation" : null;
 }
 
 export function filterResultCandidates(paths: string[]): string[] {

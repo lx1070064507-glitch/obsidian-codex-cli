@@ -3,7 +3,13 @@ import { ItemView, Notice, setIcon, type WorkspaceLeaf } from "obsidian";
 import type { ChatEntry } from "../domain.js";
 import type ObsidianCodexCliPlugin from "../main.js";
 import { CommitResultsModal, SaveResultModal } from "./modals.js";
-import { deriveControls, handleComposerShortcut } from "./view-model.js";
+import {
+  deriveControls,
+  handleComposerShortcut,
+  periodicRefreshScope,
+  type ControlState,
+  type RefreshScope
+} from "./view-model.js";
 
 export const CHAT_VIEW_TYPE = "obsidian-codex-cli-chat";
 
@@ -39,7 +45,12 @@ export class ChatView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.buildView();
-    this.registerInterval(window.setInterval(() => void this.refresh(), 200));
+    this.registerInterval(window.setInterval(() => {
+      const scope = periodicRefreshScope(this.plugin.isRunning);
+      if (scope !== null) {
+        void this.refresh(scope);
+      }
+    }, 200));
     await this.refresh();
   }
 
@@ -47,37 +58,17 @@ export class ChatView extends ItemView {
     this.contentEl.empty();
   }
 
-  async refresh(): Promise<void> {
+  async refresh(scope: RefreshScope = "full"): Promise<void> {
     if (this.refreshing || this.messagesEl === null || this.resultsEl === null) {
       return;
     }
     this.refreshing = true;
     try {
-      const activeFile = this.app.workspace.getActiveFile();
-      const controls = deriveControls({
-        healthReady: this.plugin.healthStatus?.readyToChat === true,
-        hasActiveNote: activeFile?.extension === "md",
-        running: this.plugin.isRunning
-      });
-      if (this.statusEl !== null) {
-        const health = this.plugin.healthStatus;
-        this.statusEl.setText(
-          health === null
-            ? "正在检查"
-            : health.errors.length === 0
-              ? "Codex 0.147.0 就绪"
-              : health.errors.join("；")
-        );
-        this.statusEl.toggleClass("is-ready", health?.readyToChat === true);
-      }
-      if (this.sendButton !== null) {
-        this.sendButton.disabled = !controls.canSend || this.inputEl?.value.trim().length === 0;
-      }
-      if (this.stopButton !== null) {
-        this.stopButton.disabled = !controls.canStop;
-      }
+      const controls = this.updateControls();
       this.renderMessages(controls.canSaveResult);
-      await this.renderResults();
+      if (scope === "full") {
+        await this.renderResults();
+      }
     } finally {
       this.refreshing = false;
     }
@@ -100,7 +91,7 @@ export class ChatView extends ItemView {
     const input = composer.createEl("textarea", { cls: "codex-input" });
     this.inputEl = input;
     input.rows = 3;
-    input.addEventListener("input", () => void this.refresh());
+    input.addEventListener("input", () => this.updateControls());
     this.registerDomEvent(window, "keydown", (event) => {
       handleComposerShortcut(event, input, () => void this.send());
     }, { capture: true });
@@ -113,6 +104,34 @@ export class ChatView extends ItemView {
     const resultHeader = this.contentEl.createDiv({ cls: "codex-section-header" });
     resultHeader.createSpan({ text: "成果" });
     this.resultsEl = this.contentEl.createDiv({ cls: "codex-results" });
+  }
+
+  private updateControls(): ControlState {
+    const activeFile = this.app.workspace.getActiveFile();
+    const controls = deriveControls({
+      healthReady: this.plugin.healthStatus?.readyToChat === true,
+      hasActiveNote: activeFile?.extension === "md",
+      hasInput: this.inputEl?.value.trim().length !== 0,
+      running: this.plugin.isRunning
+    });
+    if (this.statusEl !== null) {
+      const health = this.plugin.healthStatus;
+      this.statusEl.setText(
+        health === null
+          ? "正在检查"
+          : health.errors.length === 0
+            ? "Codex 0.147.0 就绪"
+            : health.errors.join("；")
+      );
+      this.statusEl.toggleClass("is-ready", health?.readyToChat === true);
+    }
+    if (this.sendButton !== null) {
+      this.sendButton.disabled = !controls.canSend;
+    }
+    if (this.stopButton !== null) {
+      this.stopButton.disabled = !controls.canStop;
+    }
+    return controls;
   }
 
   private addToolButton(
@@ -177,6 +196,7 @@ export class ChatView extends ItemView {
     }
     const text = input.value;
     input.value = "";
+    this.updateControls();
     await this.run(() => this.plugin.send(text));
   }
 

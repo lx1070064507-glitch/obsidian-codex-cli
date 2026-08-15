@@ -28,6 +28,11 @@ export interface ResultNote {
   content: string;
 }
 
+export interface SaveResultOutcome {
+  result: ResultNote;
+  linkError: string | null;
+}
+
 export interface ApprovalPrompt {
   requestId: string | number;
   kind: "command" | "fileChange";

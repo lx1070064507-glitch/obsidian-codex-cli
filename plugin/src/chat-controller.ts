@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ChatEntry, ChatSession, ResultNote } from "./domain.js";
+import type { ChatEntry, ChatSession, ResultNote, SaveResultOutcome } from "./domain.js";
 import type { ContextService } from "./services/context-service.js";
 
 export interface ActiveNote {
@@ -15,7 +15,7 @@ export interface TranscriptStorePort {
 }
 
 export interface ResultStorePort {
-  create(input: Omit<ResultNote, "path" | "createdAt">): Promise<ResultNote>;
+  create(input: Omit<ResultNote, "path" | "createdAt">): Promise<SaveResultOutcome>;
 }
 
 export interface CodexClientPort {
@@ -150,7 +150,7 @@ export class ChatController {
     }
   }
 
-  async saveResult(entryId: string, editedTitle: string, editedContent: string): Promise<ResultNote> {
+  async saveResult(entryId: string, editedTitle: string, editedContent: string): Promise<SaveResultOutcome> {
     const session = this.requireSession();
     const entry = session.entries.find((candidate) => candidate.id === entryId && candidate.role === "assistant");
     if (entry === undefined) {
