@@ -7,6 +7,7 @@
     "build": "node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
     "test": "vitest run",
+    "test:integration": "vitest run tests/codex-process.integration.test.ts tests/git.integration.test.ts",
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm test && npm run build"
   },
