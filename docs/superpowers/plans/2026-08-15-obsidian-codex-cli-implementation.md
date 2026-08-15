@@ -8,6 +8,8 @@
 
 **Tech Stack:** Obsidian API 1.13.1、TypeScript 7.0.2、Node.js 24、esbuild 0.28.2、Vitest 4.1.10、Codex CLI 0.147.0、Git 2.55。
 
+**执行状态（2026-08-15）：** Task 1-9 已实现；Task 10 的自动化测试、真实 Git、真实 Codex 握手和健康检查已通过，Obsidian 桌面手工验收因本机未安装 Obsidian 而待执行；Task 11 的代码验证与仓库边界检查已通过。详细结果见 `docs/testing/obsidian-codex-cli-acceptance.md`。
+
 ---
 
 ## 文件职责

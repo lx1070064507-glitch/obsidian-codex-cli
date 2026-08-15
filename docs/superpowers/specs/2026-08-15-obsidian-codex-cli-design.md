@@ -2,7 +2,7 @@
 
 日期：2026-08-15
 目标目录：`D:\My_DateBase\Obsidian_CodexCli`
-状态：待用户审核
+状态：已实现；自动化测试、真实 Git 和本机 Codex 握手通过；Obsidian 桌面手工验收待安装后执行
 
 ## 1. 目标
 
