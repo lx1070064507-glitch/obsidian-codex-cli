@@ -22,8 +22,8 @@
 - 将完整临时对话保存到 `Codex Chats/`，并始终排除在 Git 之外。
 - 只有在用户明确确认后，才把选定的 Codex 回复保存为 `Codex Results/` 下的独立成果笔记。
 - 在当前笔记中只添加成果笔记的 Obsidian 链接，不复制完整成果正文。
-- 以 Vault 作为 Codex 工作区，默认只允许写入该工作区内部。
-- 对外部命令、网络访问和 Vault 外路径访问显示审批请求。
+- 以 Vault 作为 Codex 工作区，使用 `workspace-write` 沙箱，默认只允许写入该工作区内部。
+- 使用 Codex CLI 原生 `untrusted` 审批策略：可信的本机只读命令默认执行；网络、写入、修改、删除和无法确认安全性的命令显示审批请求。
 - 第一版只提供“允许一次”和“拒绝”，不提供永久授权。
 - 只有在用户确认后才预览并创建 Git commit。
 - Git 提交界面只允许选择 `Codex Results/` 下的成果文件，不提交临时会话或个人笔记。
@@ -136,11 +136,11 @@ Git 服务只读取 `Codex Results/` 下的成果文件。提交界面列出尚�
 
 ## 6. 权限模型
 
-Codex 以 Vault 为工作区根目录，使用 `workspace-write` 沙箱和严格的人工审批策略。第一版不启用 Codex 原生网页搜索。通过命令行产生的网络访问、需要提权的外部命令和 Vault 外路径访问都必须触发 `app-server` 审批请求。
+Codex 以 Vault 为工作区根目录，使用 `workspace-write` 沙箱、`approvalPolicy: "untrusted"` 和 `approvalsReviewer: "user"`。第一版不启用 Codex 原生网页搜索。Codex CLI `0.147.0` 认定为可信的文件浏览、读取和文本搜索命令可以直接在沙箱中执行；网络、写入、修改、删除及无法明确认定为可信只读的命令必须触发 `app-server` 审批请求。
 
-审批只对当前请求生效，插件不保存永久允许规则。Git commit 只能从插件界面主动发起，且只能包含用户选中的成果文件；发送给 Codex 的项目规则明确禁止 Codex 自行提交、推送、删除文件或修改仓库配置。
+插件不解析命令字符串、不维护只读白名单，也不自动批准收到的请求。审批只对当前请求生效，插件不保存永久允许规则。Git commit 只能从插件界面主动发起，且只能包含用户选中的成果文件；发送给 Codex 的项目规则明确禁止 Codex 自行提交、推送、删除文件或修改仓库配置。
 
-插件绝不启用 `--dangerously-bypass-approvals-and-sandbox`、`danger-full-access` 或等效配置。
+插件绝不启用 `--dangerously-bypass-approvals-and-sandbox`、`danger-full-access`、`approvalPolicy: "never"` 或等效配置。
 
 ## 7. 失败处理
 
@@ -183,7 +183,7 @@ Codex 以 Vault 为工作区根目录，使用 `workspace-write` 沙箱和严格
 3. 从当前 Markdown 笔记开始会话时，会在 `Codex Chats/` 下创建关联的临时会话笔记，该文件不会出现在 Git 候选列表中。
 4. 关闭并重新打开 Obsidian 后，已发送消息和已生成回复不会丢失。
 5. 重新连接后可以恢复已保存的 Codex 会话。
-6. Vault 内操作遵守配置的沙箱；外部操作必须显示 Obsidian 审批窗口。
+6. 常见可信命令读取 Vault 外本机文件时不弹窗；Vault 外写入和网络访问必须显示 Obsidian 审批窗口。
 7. 只有在用户预览并确认后，“保存为成果”才在 `Codex Results/` 创建独立成果，并在当前笔记中加入链接。
 8. 已保存成果可以从插件成果列表和 Obsidian 文件浏览器随时查看。
 9. 提交预览只列出 `Codex Results/` 下可提交的成果，并允许逐项选择。
