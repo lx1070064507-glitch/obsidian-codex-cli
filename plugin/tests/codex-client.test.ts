@@ -18,7 +18,7 @@ describe("CodexClient", () => {
     await expect(linux.initialize()).rejects.toThrow("Windows");
   });
 
-  it("以 Vault 沙箱启动线程并禁用网页搜索", async () => {
+  it("以全盘只读且写入按需审批的权限档案启动线程", async () => {
     const rpc = new FakeRpc();
     const client = new CodexClient(rpc, "D:\\Vault");
     await client.initialize();
@@ -29,12 +29,22 @@ describe("CodexClient", () => {
       params: expect.objectContaining({
         cwd: "D:\\Vault",
         runtimeWorkspaceRoots: ["D:\\Vault"],
-        approvalPolicy: "untrusted",
+        approvalPolicy: "on-request",
         approvalsReviewer: "user",
-        sandbox: "workspace-write",
-        config: { web_search: "disabled" }
+        permissions: "obsidian-vault",
+        config: {
+          web_search: "disabled",
+          permissions: {
+            "obsidian-vault": {
+              filesystem: { ":root": "read" },
+              network: { enabled: false }
+            }
+          }
+        }
       })
     }));
+    expect(rpc.requests.find((request) => request.method === "thread/start")?.params)
+      .not.toHaveProperty("sandbox");
   });
 
   it("恢复线程时重新覆盖 Vault 与审批配置", async () => {
@@ -49,11 +59,22 @@ describe("CodexClient", () => {
         threadId: "thread-old",
         cwd: "D:\\Vault",
         runtimeWorkspaceRoots: ["D:\\Vault"],
-        approvalPolicy: "untrusted",
+        approvalPolicy: "on-request",
         approvalsReviewer: "user",
-        sandbox: "workspace-write"
+        permissions: "obsidian-vault",
+        config: {
+          web_search: "disabled",
+          permissions: {
+            "obsidian-vault": {
+              filesystem: { ":root": "read" },
+              network: { enabled: false }
+            }
+          }
+        }
       })
     });
+    expect(rpc.requests.find((request) => request.method === "thread/resume")?.params)
+      .not.toHaveProperty("sandbox");
   });
 
   it("发送回合、转发流式消息并解析完成", async () => {
@@ -166,6 +187,33 @@ describe("CodexClient", () => {
       params: { changes: ["../outside.txt"], reason: "outside Vault" }
     });
     expect(rpc.responses).toContainEqual({ id: 8, result: { decision: "decline" } });
+  });
+
+  it("拒绝审批后中断当前回合以避免重复申请", async () => {
+    const rpc = new FakeRpc();
+    const client = new CodexClient(rpc, "D:\\Vault");
+    await client.initialize();
+    await client.startThread();
+    const turn = client.startTurn("写入测试");
+    await vi.waitFor(() => expect(rpc.requests.some((request) => request.method === "turn/start")).toBe(true));
+    client.onApproval(async () => "deny");
+
+    await rpc.emitServerRequest({
+      id: 10,
+      method: "item/fileChange/requestApproval",
+      params: { changes: ["permission-test.txt"], reason: "write" }
+    });
+
+    expect(rpc.responses).toContainEqual({ id: 10, result: { decision: "decline" } });
+    expect(rpc.requests).toContainEqual({
+      method: "turn/interrupt",
+      params: { threadId: "thread-1", turnId: "turn-1" }
+    });
+    rpc.emitNotification({
+      method: "turn/completed",
+      params: { threadId: "thread-1", turn: { id: "turn-1", status: "interrupted", error: null } }
+    });
+    await expect(turn).resolves.toEqual({ turnId: "turn-1", status: "interrupted" });
   });
 
   it("未知服务器请求返回 method not found", async () => {

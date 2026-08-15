@@ -1,7 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
 import type { ApprovalPrompt } from "../domain.js";
-import { resolveWindowsExecutable } from "../platform/process-runner.js";
+import {
+  buildWindowsSandboxEnvironment,
+  resolveWindowsExecutable
+} from "../platform/process-runner.js";
 import { JsonRpcTransport } from "./json-rpc.js";
 import type {
   AgentMessageDelta,
@@ -86,6 +89,7 @@ export class CodexClient {
     const executable = resolveWindowsExecutable(codexPath, vaultRoot);
     const child = spawn(executable, ["app-server", "--listen", "stdio://"], {
       cwd: vaultRoot,
+      env: buildWindowsSandboxEnvironment(process.env),
       shell: false,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"]
@@ -223,10 +227,18 @@ export class CodexClient {
     return {
       cwd: this.vaultRoot,
       runtimeWorkspaceRoots: [this.vaultRoot],
-      approvalPolicy: "untrusted",
+      approvalPolicy: "on-request",
       approvalsReviewer: "user",
-      sandbox: "workspace-write",
-      config: { web_search: "disabled" }
+      permissions: "obsidian-vault",
+      config: {
+        web_search: "disabled",
+        permissions: {
+          "obsidian-vault": {
+            filesystem: { ":root": "read" },
+            network: { enabled: false }
+          }
+        }
+      }
     };
   }
 
@@ -280,6 +292,9 @@ export class CodexClient {
     const prompt = toApprovalPrompt(request);
     const choice = await this.approvalHandler(prompt);
     this.rpc.respond(request.id, { decision: choice === "allowOnce" ? "accept" : "decline" });
+    if (choice === "deny") {
+      await this.interrupt();
+    }
   }
 
   private ensureInitialized(): void {

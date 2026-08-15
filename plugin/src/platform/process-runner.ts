@@ -72,6 +72,32 @@ export function resolveWindowsExecutable(executable: string, cwd: string): strin
   return nativeExecutable;
 }
 
+export function buildWindowsSandboxEnvironment(
+  environment: NodeJS.ProcessEnv
+): NodeJS.ProcessEnv {
+  const pathKey = Object.keys(environment).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const systemRoot = environment.SystemRoot ?? environment.SYSTEMROOT ?? "C:\\Windows";
+  const powershellDirectory = join(systemRoot, "System32", "WindowsPowerShell", "v1.0");
+  const pathEntries = (environment[pathKey] ?? "")
+    .split(";")
+    .filter((entry) => entry.length > 0 && !isWindowsAppsAliasDirectory(entry));
+
+  return {
+    ...environment,
+    [pathKey]: [powershellDirectory, ...pathEntries].join(";")
+  };
+}
+
+function isWindowsAppsAliasDirectory(pathEntry: string): boolean {
+  const normalized = pathEntry
+    .trim()
+    .replace(/^"|"$/g, "")
+    .replace(/[\\/]+$/, "")
+    .replaceAll("/", "\\")
+    .toLowerCase();
+  return normalized.endsWith("\\appdata\\local\\microsoft\\windowsapps");
+}
+
 function resolveCommandPath(executable: string, cwd: string): string {
   if (isAbsolute(executable)) {
     return executable;

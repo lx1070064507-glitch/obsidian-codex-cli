@@ -58,6 +58,11 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
     this.results = new ResultStore(this.vaultFiles);
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this));
+    this.registerEvent(this.app.workspace.on("file-open", (file) => {
+      if (file instanceof TFile && file.extension === "md" && file.path.startsWith("Codex Chats/")) {
+        void this.resumeChatFile(file.path).catch((error) => new Notice(errorMessage(error)));
+      }
+    }));
     this.addRibbonIcon("message-square-code", "打开 Codex CLI", () => void this.activateView());
     this.addCommand({
       id: "open-codex-cli-chat",
@@ -140,6 +145,12 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
     const session = await controller.resumeChat(latest);
     await this.refreshViews();
     return session;
+  }
+
+  private async resumeChatFile(path: string): Promise<void> {
+    const controller = await this.ensureRuntime();
+    await controller.resumeChatPath(path);
+    await this.refreshViews();
   }
 
   async send(text: string): Promise<void> {

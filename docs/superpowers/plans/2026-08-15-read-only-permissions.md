@@ -1,5 +1,7 @@
 # Local Read-Only Permissions Implementation Plan
 
+> 历史计划：仅使用 `untrusted`、无效的 `sandbox_permissions`，以及 `untrusted + :root 只读 + Vault 可写` 均已在 Windows 桌面验收中失败。最终权限模型以 `docs/superpowers/specs/2026-08-15-read-only-permissions-design.md` 的第三次修订为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 Obsidian Codex CLI 的线程审批策略改为 Codex CLI 原生 `untrusted`，让可信的本机只读命令默认执行，同时继续对网络、写入、修改、删除和无法确认安全性的命令请求人工批准。

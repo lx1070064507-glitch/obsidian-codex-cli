@@ -67,6 +67,24 @@ describe("ChatController", () => {
     expect(codex.interruptCount).toBe(1);
   });
 
+  it("按会话笔记路径加载并恢复对应线程", async () => {
+    const transcripts = new FakeTranscriptStore();
+    const codex = new FakeCodexClient();
+    const controller = createController({ transcripts, codex });
+    const session = makeSession({
+      id: "session-b",
+      transcriptPath: "Codex Chats/B.md",
+      codexThreadId: "thread-b"
+    });
+    transcripts.sessions.set(session.transcriptPath, session);
+
+    await controller.resumeChatPath(session.transcriptPath);
+
+    expect(transcripts.loadedPaths).toEqual(["Codex Chats/B.md"]);
+    expect(codex.resumedThreads).toEqual(["thread-b"]);
+    expect(controller.session?.id).toBe("session-b");
+  });
+
   it("保存指定回复为成果并提交选择的成果", async () => {
     const transcripts = new FakeTranscriptStore();
     const codex = new FakeCodexClient();
@@ -139,6 +157,8 @@ function createController(overrides: Partial<ChatControllerDependencies> = {}): 
 class FakeTranscriptStore implements TranscriptStorePort {
   saveCount = 0;
   readonly snapshots: ChatSession[] = [];
+  readonly sessions = new Map<string, ChatSession>();
+  readonly loadedPaths: string[] = [];
 
   constructor(private readonly onSave?: () => void) {}
 
@@ -150,6 +170,15 @@ class FakeTranscriptStore implements TranscriptStorePort {
     this.saveCount += 1;
     this.onSave?.();
     this.snapshots.push(structuredClone(session));
+  }
+
+  async load(path: string): Promise<ChatSession> {
+    this.loadedPaths.push(path);
+    const session = this.sessions.get(path);
+    if (session === undefined) {
+      throw new Error(`没有对应会话: ${path}`);
+    }
+    return structuredClone(session);
   }
 }
 

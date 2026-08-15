@@ -1,6 +1,6 @@
 # Obsidian Codex CLI 验收记录
 
-日期：2026-08-15  
+日期：2026-08-16
 平台：Windows 桌面版  
 插件版本：0.1.0
 
@@ -13,7 +13,8 @@
 - [x] 临时 Git 仓库验证两个成果逐文件显示为候选。
 - [x] 临时 Git 仓库验证只提交用户选择的成果，另一个成果保持未提交。
 - [x] 生产构建生成 `main.js`、`manifest.json` 和 `styles.css`。
-- [x] 新建和恢复 Codex 线程均使用 `untrusted`，并继续设置 `approvalsReviewer: "user"`、`workspace-write` 和禁用网页搜索。
+- [x] 新建和恢复 Codex 线程均使用 `on-request` 和 `obsidian-vault` 权限档案，并继续设置 `approvalsReviewer: "user"` 和禁用网页搜索。
+- [x] 权限档案对本机根目录只读，不包含任何写入规则，并关闭命令网络；线程参数不包含旧 `sandbox` 字段。
 
 ## 本机 Codex 验收
 
@@ -23,22 +24,25 @@
 - [x] 直接解析官方 Windows 原生 `codex.exe`，全程使用 `shell: false`。
 - [x] 启动 `app-server --listen stdio://`，只完成 `initialize` 和 `initialized` 后关闭。
 - [x] 握手返回 `platformOs: "windows"`。
-- [x] 握手期间未发送 `thread/start` 或 `turn/start`，未产生模型回合。
+- [x] 真实 `app-server` 接受自定义 `obsidian-vault` 权限档案，并返回该档案为当前线程的 `activePermissionProfile`。
+- [x] 握手测试未发送 `turn/start`；显式启用的真实只读测试创建全新线程，并确认读取 `C:\Windows\win.ini` 时没有审批请求。
 
 ## Obsidian 桌面手工验收
 
-当前状态：待执行。本机未检测到 Obsidian 安装记录、命令或常见安装路径；Computer Use 应用枚举同时被本机目录权限拒绝。未安装软件，也未绕过权限。
+当前状态：最终权限配置复验中。Vault 外只读无弹窗、Vault 内写入弹窗和拒绝后文件未创建已经通过；Vault 外写入、网络访问和“允许一次”仍待手工验收。
 
 安装 Obsidian Windows 桌面版并打开 `D:\My_DateBase\Obsidian_CodexCli` 作为 Vault 后，逐项执行：
 
-- [ ] 插件可以启用，右侧栏可以打开且无 Console 错误。
-- [ ] 打开一个 Markdown 笔记后可以新建会话。
-- [ ] 完整对话写入 `Codex Chats/`，并且 Git 保持忽略。
+- [x] 插件可以启用，右侧栏可以打开且无可见错误。
+- [x] 打开一个 Markdown 笔记后可以新建会话。
+- [x] 完整对话写入 `Codex Chats/`，并且 Git 保持忽略。
 - [ ] 重启 Obsidian 后可以恢复最近会话。
-- [ ] 常见可信命令读取 Vault 外本机文件时不显示审批弹窗。
+- [x] 命令读取 Vault 内外本机文件时不显示审批弹窗。
+- [x] 尝试写入、修改或删除 Vault 内文件时显示审批弹窗。
 - [ ] 尝试写入、修改或删除 Vault 外文件时显示审批弹窗。
 - [ ] 尝试访问网络时显示审批弹窗。
-- [ ] 选择“拒绝”后操作不执行，并且当前会话可以继续。
+- [x] 选择“拒绝”后操作不执行；插件中止当前回合，下一条消息仍可继续会话。
+- [ ] 打开不同的 `Codex Chats/` 笔记时自动加载对应会话上下文。
 - [ ] 选择“允许一次”后，同类非可信操作再次执行时仍需审批。
 - [ ] 审批弹窗只有“允许一次”和“拒绝”，关闭弹窗等同拒绝。
 - [ ] Codex 完成回复可以预览并保存为 `Codex Results/` 成果。
@@ -51,5 +55,8 @@
 ## 已知验收限制
 
 - Codex `app-server` 属于实验性协议，插件只接受 CLI `0.147.0`。
+- 仅使用 `untrusted` 无法满足 Windows 上的 Vault 外只读要求；失败复现为通过 PowerShell 读取 `C:\Windows\win.ini` 时仍显示审批弹窗。
+- `sandbox_permissions` 在 CLI `0.147.0` 严格配置检查下属于未知字段，放入 `thread/start.config` 会被静默忽略，不能用于实现该权限边界。
+- `untrusted` 会按命令信誉拦截 PowerShell，只靠全盘只读权限档案无法消除该类只读审批；最终改用 `on-request`。
 - 第一版只支持 Windows 桌面版和单个本地 Vault。
 - ChatGPT 客户端不会自动显示这些本地会话；完整会话与成果以 Vault 文档为准。

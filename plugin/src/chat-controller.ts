@@ -10,6 +10,7 @@ export interface ActiveNote {
 
 export interface TranscriptStorePort {
   create(title: string, relatedNote: string): Promise<ChatSession>;
+  load(path: string): Promise<ChatSession>;
   save(session: ChatSession): Promise<void>;
 }
 
@@ -101,6 +102,13 @@ export class ChatController {
       await this.recordFailure(asError(error));
       throw error;
     }
+  }
+
+  async resumeChatPath(path: string): Promise<ChatSession> {
+    if (this.sessionState?.transcriptPath === path) {
+      return this.sessionState;
+    }
+    return this.resumeChat(await this.dependencies.transcripts.load(path));
   }
 
   async send(text: string): Promise<void> {
