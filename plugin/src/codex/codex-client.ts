@@ -93,6 +93,7 @@ export class CodexClient {
   static fromChildProcess(child: ChildProcessWithoutNullStreams, vaultRoot: string): CodexClient {
     child.stderr.resume();
     const rpc = new JsonRpcTransport(child.stdout, child.stdin);
+    child.once("error", () => rpc.close());
     return new CodexClient(rpc, vaultRoot, child);
   }
 
