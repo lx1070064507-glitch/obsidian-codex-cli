@@ -1,35 +1,35 @@
-# Obsidian Codex CLI Integration Design
+# Obsidian Codex CLI 集成设计
 
-Date: 2026-08-15
-Target: `D:\My_DateBase\Obsidian_CodexCli`
-Status: Approved for implementation planning
+日期：2026-08-15
+目标目录：`D:\My_DateBase\Obsidian_CodexCli`
+状态：待用户审核
 
-## 1. Objective
+## 1. 目标
 
-Build a Windows-only Obsidian desktop plugin that connects an Obsidian Vault to the locally installed Codex CLI. The plugin provides a native chat sidebar, preserves each complete conversation as a Markdown note, lets the user save selected Codex responses into the active note as conclusions, and commits only notes touched by the current chat.
+构建一个仅支持 Windows 桌面版 Obsidian 的插件，将 Obsidian Vault 与本机安装的 Codex CLI 连接起来。插件提供原生聊天侧边栏，将每次完整对话保存为 Markdown 笔记，允许用户把选定的 Codex 回复作为结论写入当前笔记，并且只提交本次会话涉及的笔记。
 
-The design treats Markdown files as durable project memory, Codex sessions as execution context, and Git as the audit and synchronization layer. It does not depend on local CLI chats appearing in ChatGPT history.
+本设计把 Markdown 文件作为可长期保存的项目记忆，把 Codex 会话作为执行上下文，把 Git 作为审计和同步层。设计不依赖本地 CLI 对话出现在 ChatGPT 聊天历史中。
 
-## 2. Confirmed Scope
+## 2. 已确认范围
 
-The first release will:
+第一版将实现：
 
-- Support Windows desktop Obsidian only.
-- Require `codex.cmd`, Codex CLI `0.147.0`, and Git.
-- Use the experimental Codex `app-server` protocol over a local child process.
-- Provide a native Obsidian right-sidebar chat view.
-- Associate each chat with the active Markdown note.
-- Save the full conversation under `Codex Chats/`.
-- Save a selected Codex response into the associated note only after explicit user confirmation.
-- Run Codex with the Vault as its workspace and allow writes only inside that workspace by default.
-- Show approval requests for external commands, network access, or paths outside the Vault.
-- Offer only one-time approval and denial in the first release.
-- Preview and create Git commits only after explicit confirmation.
-- Stage only the chat note and associated note changed by the current chat.
+- 仅支持 Windows 桌面版 Obsidian。
+- 要求安装 `codex.cmd`、Codex CLI `0.147.0` 和 Git。
+- 通过本地子进程使用实验性的 Codex `app-server` 协议。
+- 提供原生 Obsidian 右侧聊天栏。
+- 每个会话都与当前打开的 Markdown 笔记关联。
+- 将完整对话保存到 `Codex Chats/`。
+- 只有在用户明确确认后，才把选定的 Codex 回复写入关联笔记。
+- 以 Vault 作为 Codex 工作区，默认只允许写入该工作区内部。
+- 对外部命令、网络访问和 Vault 外路径访问显示审批请求。
+- 第一版只提供“允许一次”和“拒绝”，不提供永久授权。
+- 只有在用户确认后才预览并创建 Git commit。
+- 只暂存当前会话笔记，以及由本次会话修改的关联笔记。
 
-The first release will not support mobile Obsidian, macOS, Linux, multiple Vaults, semantic retrieval, permanent approval rules, automatic ChatGPT chat synchronization, or silent fallback to unrestricted CLI execution.
+第一版不支持移动端 Obsidian、macOS、Linux、多 Vault、语义检索、永久权限规则、普通 ChatGPT 对话自动同步，也不会静默降级为不受控的 CLI 执行方式。
 
-## 3. Repository Layout
+## 3. 仓库结构
 
 ```text
 D:\My_DateBase\Obsidian_CodexCli\
@@ -62,120 +62,120 @@ D:\My_DateBase\Obsidian_CodexCli\
 `-- AGENTS.md
 ```
 
-Plugin source remains under `plugin/`. The build writes the three Obsidian runtime artifacts to `.obsidian/plugins/obsidian-codex-cli/`. Dependencies, Obsidian workspace layout, and local plugin settings are excluded from Git.
+插件源代码保存在 `plugin/`。构建过程把 Obsidian 运行所需的三个文件写入 `.obsidian/plugins/obsidian-codex-cli/`。依赖目录、Obsidian 工作区布局和本地插件设置不提交到 Git。
 
-## 4. Components
+## 4. 组件设计
 
-### 4.1 Chat View
+### 4.1 聊天视图
 
-The right-sidebar view owns presentation and user interaction. It displays health status, messages, streaming output, stop state, approval requests, reconnect actions, save-conclusion actions, commit preview, and final commit results. It uses Obsidian theme variables and desktop-native controls rather than a separate visual design system.
+右侧聊天栏负责展示和用户交互，包括健康状态、消息、流式输出、停止状态、审批请求、重新连接、“保存为结论”、提交预览和最终提交结果。界面使用 Obsidian 主题变量和桌面原生控件，不引入独立设计系统。
 
-Only one Codex turn may run in a chat at a time. Closing the view does not delete the transcript or session metadata.
+同一会话同时只允许执行一个 Codex 回合。关闭聊天栏不会删除会话记录或会话元数据。
 
-### 4.2 Codex Client
+### 4.2 Codex 客户端
 
-The Codex client starts `codex.cmd app-server` as a local child process and communicates through the structured stdio protocol. It owns process lifetime, protocol framing, thread creation and resume, streamed events, cancellation, approval responses, and protocol errors.
+Codex 客户端以本地子进程启动 `codex.cmd app-server`，并通过结构化的标准输入输出协议通信。它负责进程生命周期、协议消息、线程创建和恢复、流式事件、取消操作、审批响应及协议错误。
 
-All experimental protocol details stay behind this adapter. The plugin refuses to start a chat when the installed Codex version is not exactly `0.147.0` or the expected protocol handshake fails. It does not fall back to `danger-full-access`, approval bypass flags, or unstructured terminal scraping.
+所有实验性协议细节都封装在这一适配层内。如果已安装的 Codex 版本不完全等于 `0.147.0`，或者协议握手失败，插件将拒绝启动会话。插件不会降级到 `danger-full-access`、免审批参数或解析终端文本的非结构化方式。
 
-### 4.3 Transcript Store
+### 4.3 会话记录存储
 
-Each chat is stored as `Codex Chats/YYYY-MM-DD-<sanitized-title>.md`. The note begins with YAML metadata containing the Codex session ID, creation and update timestamps, related note path, model when reported, and chat status.
+每个会话保存为 `Codex Chats/YYYY-MM-DD-<净化后的标题>.md`。笔记开头使用 YAML 元数据记录 Codex 会话 ID、创建时间、更新时间、关联笔记路径、Codex 返回的模型信息和会话状态。
 
-User messages are persisted before dispatch. Codex messages are updated while streaming and finalized when the turn ends. The transcript includes user-visible approval decisions and concise execution summaries. Raw protocol frames, secrets, environment variables, and credentials are never written to the transcript.
+用户消息在发送前落盘。Codex 回复在流式生成期间持续更新，并在回合结束后写入最终内容。记录中包含用户可见的审批结果和简洁的执行摘要。原始协议帧、密钥、环境变量和凭证绝不写入会话笔记。
 
-### 4.4 Context Service
+### 4.4 上下文服务
 
-A new chat requires an active Markdown note. The first turn sends the related note path and its current content to Codex. Later turns send only the new user message unless the related note changed, in which case the updated note content is supplied once. The plugin never scans the entire Vault automatically.
+创建新会话时必须存在当前打开的 Markdown 笔记。第一轮向 Codex 发送关联笔记的路径和当前内容。后续回合只发送新的用户消息；如果关联笔记发生变化，则只补充一次更新后的笔记内容。插件不会自动扫描整个 Vault。
 
-The Codex app-server thread retains conversational context. The plugin does not resend the complete transcript on every turn.
+Codex `app-server` 线程保留对话上下文，因此插件不会在每一轮重复发送完整会话记录。
 
-### 4.5 Git Service
+### 4.5 Git 服务
 
-The Git service records the relevant note paths and their repository state when the chat starts. Commit preview shows the exact file list, diff, and an editable commit message. After confirmation, the service stages only the current chat note and the associated note if the save-conclusion action changed it.
+Git 服务在会话开始时记录相关笔记路径及其仓库状态。提交预览显示准确的文件列表、差异和可编辑的提交说明。用户确认后，服务只暂存当前会话笔记，以及通过“保存为结论”修改的关联笔记。
 
-If a candidate file already had uncommitted changes when the chat began, automatic commit is blocked. This avoids including pre-existing edits from the same file. Unrelated modified or untracked files never enter the staging command.
+如果候选文件在会话开始前已经存在未提交修改，插件将阻止自动提交，避免把该文件原有的修改混入当前 commit。其他已修改文件或未跟踪文件不会进入暂存命令。
 
-### 4.6 Health Check and Settings
+### 4.6 健康检查与设置
 
-Startup checks verify:
+启动检查包括：
 
-- The plugin is running in Windows desktop Obsidian.
-- The configured `codex.cmd` exists and reports `codex-cli 0.147.0`.
-- Codex authentication is usable.
-- Git exists.
-- The Vault is inside the expected Git repository.
-- The Codex app-server protocol handshake succeeds.
+- 插件运行在 Windows 桌面版 Obsidian 中。
+- 配置的 `codex.cmd` 存在，并返回 `codex-cli 0.147.0`。
+- Codex 登录状态可用。
+- Git 可用。
+- Vault 位于预期的 Git 仓库中。
+- Codex `app-server` 协议握手成功。
 
-Settings allow explicit paths for `codex.cmd` and Git, while defaulting to command discovery. Settings remain local and are not committed.
+设置页允许用户明确指定 `codex.cmd` 和 Git 的路径，默认使用命令发现。设置只保存在本机，不提交到 Git。
 
-## 5. User Flow
+## 5. 用户流程
 
-1. The user opens a Markdown note and activates the Codex sidebar.
-2. The user starts a chat. The plugin creates the transcript and stores the initial Git state.
-3. The user sends a message. The message is saved before it reaches Codex.
-4. The Codex client starts or resumes the app-server thread with the Vault as its working root.
-5. Streamed response content appears in the sidebar and is saved incrementally.
-6. Approval requests pause the turn and show the exact operation, target, and reason.
-7. The user allows the operation once or denies it. The decision is returned to Codex and summarized in the transcript.
-8. The completed response offers a Save as conclusion action.
-9. Saving a conclusion opens an editable preview, then appends the confirmed text under a `## Codex conclusions` section in the related note.
-10. Commit opens a preview listing only eligible chat files. The user reviews the diff and commit message before confirming.
+1. 用户打开一个 Markdown 笔记并激活 Codex 侧边栏。
+2. 用户新建会话，插件创建会话笔记并记录初始 Git 状态。
+3. 用户发送消息，消息在交给 Codex 前先写入会话笔记。
+4. Codex 客户端以 Vault 为工作根目录，创建或恢复 `app-server` 线程。
+5. 流式回复显示在侧边栏中，并同步保存到会话笔记。
+6. 审批请求会暂停当前回合，并显示具体操作、目标和原因。
+7. 用户选择“允许一次”或“拒绝”，插件把决定返回给 Codex，并将简要结果写入会话记录。
+8. 完成的 Codex 回复提供“保存为结论”操作。
+9. 保存结论时先打开可编辑预览，确认后把内容追加到关联笔记的 `## Codex 结论` 区域。
+10. 点击提交后，插件显示符合条件的会话文件；用户检查差异和提交说明后确认 commit。
 
-## 6. Permission Model
+## 6. 权限模型
 
-Codex runs with the Vault as its workspace root, the `workspace-write` sandbox, and a strict human-approval policy. Native web search is disabled in the first release. Shell-based network access, external commands that require escalation, and access outside the Vault must surface an app-server approval request.
+Codex 以 Vault 为工作区根目录，使用 `workspace-write` 沙箱和严格的人工审批策略。第一版不启用 Codex 原生网页搜索。通过命令行产生的网络访问、需要提权的外部命令和 Vault 外路径访问都必须触发 `app-server` 审批请求。
 
-Approval is scoped to the current request only. The plugin does not persist allow rules. Git commit is initiated only through the plugin UI; Codex prompts are instructed not to commit, push, delete, or modify repository configuration.
+审批只对当前请求生效，插件不保存永久允许规则。Git commit 只能从插件界面主动发起；发送给 Codex 的项目规则明确禁止 Codex 自行提交、推送、删除文件或修改仓库配置。
 
-The plugin never enables `--dangerously-bypass-approvals-and-sandbox`, `danger-full-access`, or equivalent configuration.
+插件绝不启用 `--dangerously-bypass-approvals-and-sandbox`、`danger-full-access` 或等效配置。
 
-## 7. Failure Handling
+## 7. 失败处理
 
-- Missing or incompatible Codex: disable sending and display the detected path and version.
-- Missing Git or repository: allow chat and note saving, but disable commit.
-- Authentication failure: disable sending and show the relevant Codex login command without attempting to capture credentials.
-- App-server exit: preserve the transcript and offer reconnect-and-resume using the stored session ID.
-- Unknown protocol message: stop the active request, preserve a sanitized error summary, and require a compatible plugin update.
-- Obsidian shutdown or plugin unload: request child-process shutdown, then terminate it if it does not exit within a short timeout. Saved notes remain untouched.
-- Pre-existing modifications in a commit candidate: block automatic commit and identify the affected file.
-- Git commit failure: leave the working tree unchanged apart from any staging Git already completed; report the error and offer a safe unstage action only after confirmation.
+- Codex 缺失或版本不兼容：禁用发送，并显示检测到的路径和版本。
+- Git 或仓库缺失：允许聊天和保存笔记，但禁用提交。
+- Codex 未登录：禁用发送，显示相应的 Codex 登录命令，但不尝试读取凭证。
+- `app-server` 退出：保留会话笔记，并使用已保存的会话 ID 提供“重新连接并恢复”。
+- 收到未知协议消息：停止当前请求，保存经过净化的错误摘要，并要求更新到兼容的插件版本。
+- Obsidian 退出或插件卸载：先请求子进程正常退出；若其未在短时间内结束，再终止子进程。已保存笔记保持不变。
+- 提交候选文件已有旧修改：阻止自动提交，并明确指出受影响文件。
+- Git commit 失败：除了 Git 已完成的暂存外，不改变工作区；显示错误，并且只有在用户确认后才提供安全的取消暂存操作。
 
-## 8. Testing
+## 8. 测试设计
 
-### 8.1 Unit Tests
+### 8.1 单元测试
 
-- Transcript naming, frontmatter, append, stream finalization, and sanitization.
-- Vault path containment and related-note change detection.
-- Candidate file tracking and pre-existing modification blocking.
-- Commit message generation and exact staging argument construction.
-- Health-check version parsing and executable discovery.
+- 会话文件命名、YAML 元数据、内容追加、流式回复结束处理和敏感信息净化。
+- Vault 路径包含关系和关联笔记变更检测。
+- 候选文件跟踪和旧修改拦截。
+- 提交说明生成和精确的暂存参数构造。
+- 健康检查中的版本解析和可执行文件发现。
 
-### 8.2 Protocol Tests
+### 8.2 协议测试
 
-A fake app-server process will cover initialization, thread start, thread resume, streamed replies, cancellation, one-time approval, denial, process exit, malformed frames, and unknown messages.
+使用模拟 `app-server` 进程覆盖初始化、线程创建、线程恢复、流式回复、取消、允许一次、拒绝、进程退出、格式错误消息和未知消息。
 
-### 8.3 Git Integration Tests
+### 8.3 Git 集成测试
 
-Temporary repositories will verify that only explicit note paths are staged and committed, unrelated changes remain untouched, and pre-existing changes in a candidate file block the commit.
+在临时仓库中验证：只暂存并提交明确指定的笔记路径；无关修改保持不变；候选文件存在旧修改时阻止提交。
 
-### 8.4 Build Verification
+### 8.4 构建验证
 
-The project must pass type checking, automated tests, and a production build. The resulting `manifest.json`, `main.js`, and `styles.css` must exist in the Vault plugin directory.
+项目必须通过类型检查、自动化测试和生产构建。Vault 插件目录中必须生成 `manifest.json`、`main.js` 和 `styles.css`。
 
-## 9. Acceptance Criteria
+## 9. 验收标准
 
-1. Obsidian loads the plugin and opens the Codex sidebar.
-2. Health checks identify Codex CLI `0.147.0`, authentication, and Git accurately.
-3. Starting a chat from an active Markdown note creates a related transcript under `Codex Chats/`.
-4. Messages and streamed replies survive Obsidian restart without transcript loss.
-5. A stored Codex session resumes after reconnecting.
-6. Vault-local work follows the configured sandbox, while external operations surface an Obsidian approval prompt.
-7. Saving a conclusion modifies only the related note after preview confirmation.
-8. Commit preview lists only files touched by the chat.
-9. A confirmed commit excludes unrelated repository changes.
-10. Pre-existing changes in a candidate note prevent automatic commit.
+1. Obsidian 能加载插件并打开 Codex 侧边栏。
+2. 健康检查能准确识别 Codex CLI `0.147.0`、登录状态和 Git。
+3. 从当前 Markdown 笔记开始会话时，会在 `Codex Chats/` 下创建关联的会话笔记。
+4. 关闭并重新打开 Obsidian 后，已发送消息和已生成回复不会丢失。
+5. 重新连接后可以恢复已保存的 Codex 会话。
+6. Vault 内操作遵守配置的沙箱；外部操作必须显示 Obsidian 审批窗口。
+7. 只有在用户预览并确认后，“保存为结论”才修改关联笔记。
+8. 提交预览只列出当前会话涉及的文件。
+9. 确认后的 commit 不包含仓库中的无关修改。
+10. 候选笔记存在会话开始前的旧修改时，自动提交必须被阻止。
 
-## 10. Known Constraint
+## 10. 已知限制
 
-Codex `app-server` is experimental. Version `0.147.0` is the validated protocol baseline for this release. Supporting a later Codex version requires rerunning protocol and end-to-end tests before widening the accepted version range.
+Codex `app-server` 目前仍是实验接口。第一版以 `0.147.0` 作为已验证的协议基线。支持更新的 Codex 版本前，必须重新运行协议测试和端到端测试，再扩大插件接受的版本范围。
