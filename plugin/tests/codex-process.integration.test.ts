@@ -59,12 +59,16 @@ handshakeTest("与本机 codex.cmd 只完成初始化握手", async () => {
   }
 }, 10_000);
 
-handshakeTest("本机 codex.cmd 接受全盘只读且写入按需审批的权限档案", async () => {
+handshakeTest("本机 codex.cmd 接受多工作区与写入白名单权限档案", async () => {
   const codexPath = process.env.CODEX_PATH;
   if (codexPath === undefined || codexPath.length === 0) {
     throw new Error("缺少 CODEX_PATH");
   }
-  const client = CodexClient.fromExecutable(codexPath, process.cwd());
+  const root = resolve(process.cwd(), "..");
+  const client = CodexClient.fromExecutable(codexPath, root, {
+    workspaceRoots: [root],
+    writablePaths: [resolve(root, "Codex Results")]
+  });
   try {
     await client.initialize();
     await expect(client.startThread()).resolves.toMatchObject({ id: expect.any(String) });

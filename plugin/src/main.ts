@@ -11,22 +11,34 @@ import { CodexClient } from "./codex/codex-client.js";
 import type { ChatSession, HealthStatus, ResultNote } from "./domain.js";
 import { NodeProcessRunner } from "./platform/process-runner.js";
 import { ObsidianVaultFiles } from "./platform/vault-files.js";
+import {
+  normalizePluginSettings,
+  type CodexPluginSettings
+} from "./plugin-settings.js";
 import { ContextService } from "./services/context-service.js";
 import { GitService, type GitCandidate } from "./services/git-service.js";
 import { HealthCheck } from "./services/health-check.js";
 import { ResultStore } from "./services/result-store.js";
+import { SPREADSHEET_EXTENSIONS } from "./services/spreadsheet-files.js";
 import { TranscriptStore } from "./services/transcript-store.js";
 import {
+  WorkspacePolicy,
+  type ResolvedWorkspaceAccess
+} from "./services/workspace-policy.js";
+import {
   CodexSettingTab,
-  DEFAULT_SETTINGS,
-  type CodexPluginSettings,
   type SettingsController
 } from "./settings.js";
 import { ApprovalModal } from "./ui/modals.js";
 import { CHAT_VIEW_TYPE, ChatView } from "./ui/chat-view.js";
+import {
+  SPREADSHEET_VIEW_TYPE,
+  SpreadsheetExternalView
+} from "./ui/spreadsheet-view.js";
+import { WritablePathHighlighter } from "./ui/writable-path-highlighter.js";
 
 export default class ObsidianCodexCliPlugin extends Plugin implements SettingsController {
-  settings: CodexPluginSettings = { ...DEFAULT_SETTINGS };
+  settings: CodexPluginSettings = normalizePluginSettings(null);
   healthStatus: HealthStatus | null = null;
 
   private vaultRoot = "";
@@ -36,10 +48,13 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
   private gitService: GitService | null = null;
   private codex: CodexClient | null = null;
   private controller: ChatController | null = null;
+  private suspendedSession: ChatSession | null = null;
+  private writablePathHighlighter: WritablePathHighlighter | null = null;
   private baselineCaptured = false;
+  private readonly workspacePolicy = new WorkspacePolicy();
 
   get currentSession(): ChatSession | null {
-    return this.controller?.session ?? null;
+    return this.controller?.session ?? this.suspendedSession;
   }
 
   get isRunning(): boolean {
@@ -47,7 +62,7 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
   }
 
   async onload(): Promise<void> {
-    this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData() as Partial<CodexPluginSettings> | null) };
+    this.settings = normalizePluginSettings(await this.loadData());
     const adapter = this.app.vault.adapter;
     if (!(adapter instanceof FileSystemAdapter)) {
       throw new Error("Codex CLI 插件仅支持 Windows 桌面文件系统 Vault");
@@ -56,6 +71,19 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
     this.vaultFiles = new ObsidianVaultFiles(this.app.vault);
     this.transcripts = new TranscriptStore(this.vaultFiles);
     this.results = new ResultStore(this.vaultFiles);
+
+    this.registerView(
+      SPREADSHEET_VIEW_TYPE,
+      (leaf) => new SpreadsheetExternalView(leaf)
+    );
+    this.registerExtensions([...SPREADSHEET_EXTENSIONS], SPREADSHEET_VIEW_TYPE);
+    this.writablePathHighlighter = new WritablePathHighlighter(
+      document,
+      this.vaultRoot,
+      () => this.settings.writablePaths
+    );
+    this.app.workspace.onLayoutReady(() => this.writablePathHighlighter?.start());
+    this.register(() => this.writablePathHighlighter?.stop());
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this));
     this.registerEvent(this.app.workspace.on("file-open", (file) => {
@@ -81,16 +109,28 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
     this.controller = null;
     this.codex?.close();
     this.codex = null;
+    this.writablePathHighlighter?.stop();
+    this.writablePathHighlighter = null;
   }
 
   async updateSettings(settings: CodexPluginSettings): Promise<void> {
-    this.settings = settings;
-    await this.saveData(settings);
+    const resolved = await this.resolveWorkspaceAccess(settings);
+    this.settings = {
+      ...settings,
+      workspaceRoots: resolved.workspaceRoots,
+      writablePaths: resolved.writablePaths
+    };
+    await this.saveData(this.settings);
     this.shutdownRuntime();
+    this.writablePathHighlighter?.refresh();
     this.gitService = null;
     this.baselineCaptured = false;
     this.healthStatus = null;
     await this.refreshViews();
+  }
+
+  async resolveWorkspaceAccess(settings: CodexPluginSettings): Promise<ResolvedWorkspaceAccess> {
+    return this.workspacePolicy.resolve(settings.workspaceRoots, settings.writablePaths);
   }
 
   async recheckHealth(): Promise<void> {
@@ -129,6 +169,7 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
     const controller = await this.ensureRuntime();
     const note = this.activeMarkdownNote();
     const session = await controller.startChat(note);
+    this.suspendedSession = null;
     await this.refreshViews();
     return session;
   }
@@ -143,6 +184,7 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
       throw new Error("没有可恢复的本地会话");
     }
     const session = await controller.resumeChat(latest);
+    this.suspendedSession = null;
     await this.refreshViews();
     return session;
   }
@@ -150,12 +192,19 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
   private async resumeChatFile(path: string): Promise<void> {
     const controller = await this.ensureRuntime();
     await controller.resumeChatPath(path);
+    this.suspendedSession = null;
     await this.refreshViews();
   }
 
   async send(text: string): Promise<void> {
     if (this.controller === null || this.controller.session === null) {
-      await this.startNewChat();
+      if (this.suspendedSession === null) {
+        await this.startNewChat();
+      } else {
+        const controller = await this.ensureRuntime();
+        await controller.resumeChat(this.suspendedSession);
+        this.suspendedSession = null;
+      }
     }
     await this.controller!.send(text);
     await this.refreshViews();
@@ -219,7 +268,12 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
     if (this.controller !== null) {
       return this.controller;
     }
-    const codex = CodexClient.fromExecutable(this.settings.codexPath, this.vaultRoot);
+    const workspaceAccess = await this.resolveWorkspaceAccess(this.settings);
+    const codex = CodexClient.fromExecutable(
+      this.settings.codexPath,
+      this.vaultRoot,
+      workspaceAccess
+    );
     this.codex = codex;
     try {
       await codex.initialize();
@@ -245,6 +299,9 @@ export default class ObsidianCodexCliPlugin extends Plugin implements SettingsCo
   }
 
   private shutdownRuntime(): void {
+    if (this.controller?.session !== null && this.controller?.session !== undefined) {
+      this.suspendedSession = this.controller.session;
+    }
     this.controller?.destroy();
     this.controller = null;
     this.codex?.close();

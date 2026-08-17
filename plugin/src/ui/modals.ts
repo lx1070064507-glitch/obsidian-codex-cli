@@ -1,11 +1,15 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 
-import type { ApprovalPrompt } from "../domain.js";
+import type { ApprovalDetail, ApprovalPrompt } from "../domain.js";
 import type { ApprovalChoice } from "../codex/codex-client.js";
 import type { GitCandidate } from "../services/git-service.js";
 
 export class ApprovalModal extends Modal {
   private settled = false;
+  private detailEl: HTMLElement | null = null;
+  private diffContainerEl: HTMLDetailsElement | null = null;
+  private diffEl: HTMLElement | null = null;
+  private unsubscribeDetail: (() => void) | null = null;
 
   constructor(
     app: App,
@@ -18,7 +22,14 @@ export class ApprovalModal extends Modal {
   onOpen(): void {
     this.titleEl.setText(this.prompt.title);
     this.contentEl.addClass("codex-modal");
-    this.contentEl.createEl("div", { cls: "codex-modal-detail", text: this.prompt.detail || "无详细信息" });
+    this.detailEl = this.contentEl.createEl("div", { cls: "codex-modal-detail" });
+    this.diffContainerEl = this.contentEl.createEl("details", { cls: "codex-approval-diff" });
+    this.diffContainerEl.createEl("summary", { text: "查看详细差异" });
+    this.diffEl = this.diffContainerEl.createEl("pre", { cls: "codex-diff-preview" });
+    this.renderDetail({ detail: this.prompt.detail, diff: this.prompt.diff });
+    this.unsubscribeDetail = this.prompt.subscribeDetail?.((detail) => {
+      this.renderDetail(detail);
+    }) ?? null;
     if (this.prompt.reason !== null) {
       this.contentEl.createEl("div", { cls: "codex-modal-reason", text: this.prompt.reason });
     }
@@ -30,6 +41,11 @@ export class ApprovalModal extends Modal {
   }
 
   onClose(): void {
+    this.unsubscribeDetail?.();
+    this.unsubscribeDetail = null;
+    this.detailEl = null;
+    this.diffContainerEl = null;
+    this.diffEl = null;
     this.contentEl.empty();
     if (!this.settled) {
       this.settled = true;
@@ -44,6 +60,15 @@ export class ApprovalModal extends Modal {
     this.settled = true;
     this.resolveChoice(choice);
     this.close();
+  }
+
+  private renderDetail(value: ApprovalDetail): void {
+    this.detailEl?.setText(value.detail || "暂无详细差异");
+    if (this.diffContainerEl === null || this.diffEl === null) {
+      return;
+    }
+    this.diffContainerEl.hidden = value.diff === null;
+    this.diffEl.setText(value.diff ?? "");
   }
 }
 

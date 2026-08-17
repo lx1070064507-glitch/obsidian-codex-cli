@@ -1,13 +1,19 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
-import type { ApprovalPrompt } from "../domain.js";
+import type { ApprovalDetail, ApprovalPrompt } from "../domain.js";
 import {
   buildWindowsSandboxEnvironment,
   resolveWindowsExecutable
 } from "../platform/process-runner.js";
+import type { ResolvedWorkspaceAccess } from "../services/workspace-policy.js";
+import {
+  parseFileChangePatchUpdated,
+  summarizeFileChanges
+} from "./file-change-detail.js";
 import { JsonRpcTransport } from "./json-rpc.js";
 import type {
   AgentMessageDelta,
+  FileUpdateChange,
   InitializeParams,
   InitializeResult,
   RequestId,
@@ -63,6 +69,11 @@ const INITIALIZE_PARAMS: InitializeParams = {
   }
 };
 
+const EMPTY_WORKSPACE_ACCESS: ResolvedWorkspaceAccess = {
+  workspaceRoots: [],
+  writablePaths: []
+};
+
 export class CodexClient {
   private initialized = false;
   private initializeResult: InitializeResult | null = null;
@@ -71,13 +82,22 @@ export class CodexClient {
   private pendingTurn: PendingTurn | null = null;
   private approvalHandler: ApprovalHandler = async () => "deny";
   private readonly deltaHandlers = new Set<MessageDeltaHandler>();
+  private readonly fileChanges = new Map<
+    string,
+    { turnId: string; changes: FileUpdateChange[] }
+  >();
+  private readonly fileDetailHandlers = new Map<
+    string,
+    Set<(detail: ApprovalDetail) => void>
+  >();
   private readonly removeNotificationHandler: () => void;
   private readonly removeServerRequestHandler: () => void;
 
   constructor(
     private readonly rpc: CodexRpc,
     private readonly vaultRoot: string,
-    private readonly childProcess: ChildProcessWithoutNullStreams | null = null
+    private readonly childProcess: ChildProcessWithoutNullStreams | null = null,
+    private readonly workspaceAccess: ResolvedWorkspaceAccess = EMPTY_WORKSPACE_ACCESS
   ) {
     this.removeNotificationHandler = rpc.onNotification((notification) => {
       this.handleNotification(notification);
@@ -85,7 +105,11 @@ export class CodexClient {
     this.removeServerRequestHandler = rpc.onServerRequest((request) => this.handleServerRequest(request));
   }
 
-  static fromExecutable(codexPath: string, vaultRoot: string): CodexClient {
+  static fromExecutable(
+    codexPath: string,
+    vaultRoot: string,
+    workspaceAccess: ResolvedWorkspaceAccess = EMPTY_WORKSPACE_ACCESS
+  ): CodexClient {
     const executable = resolveWindowsExecutable(codexPath, vaultRoot);
     const child = spawn(executable, ["app-server", "--listen", "stdio://"], {
       cwd: vaultRoot,
@@ -94,14 +118,18 @@ export class CodexClient {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"]
     });
-    return CodexClient.fromChildProcess(child, vaultRoot);
+    return CodexClient.fromChildProcess(child, vaultRoot, workspaceAccess);
   }
 
-  static fromChildProcess(child: ChildProcessWithoutNullStreams, vaultRoot: string): CodexClient {
+  static fromChildProcess(
+    child: ChildProcessWithoutNullStreams,
+    vaultRoot: string,
+    workspaceAccess: ResolvedWorkspaceAccess = EMPTY_WORKSPACE_ACCESS
+  ): CodexClient {
     child.stderr.resume();
     const rpc = new JsonRpcTransport(child.stdout, child.stdin);
     child.once("error", () => rpc.close());
-    return new CodexClient(rpc, vaultRoot, child);
+    return new CodexClient(rpc, vaultRoot, child, workspaceAccess);
   }
 
   async initialize(): Promise<InitializeResult> {
@@ -153,7 +181,7 @@ export class CodexClient {
           threadId,
           input: [{ type: "text", text, text_elements: [] }],
           cwd: this.vaultRoot,
-          runtimeWorkspaceRoots: [this.vaultRoot]
+          runtimeWorkspaceRoots: this.runtimeWorkspaceRoots()
         })
         .then((result) => {
           if (this.startingTurn !== starting) {
@@ -218,6 +246,8 @@ export class CodexClient {
       this.pendingTurn.reject(new Error("Codex 客户端已关闭"));
       this.pendingTurn = null;
     }
+    this.fileChanges.clear();
+    this.fileDetailHandlers.clear();
     if (this.childProcess !== null && !this.childProcess.killed) {
       this.childProcess.kill();
     }
@@ -226,7 +256,7 @@ export class CodexClient {
   private threadConfiguration(): Record<string, unknown> {
     return {
       cwd: this.vaultRoot,
-      runtimeWorkspaceRoots: [this.vaultRoot],
+      runtimeWorkspaceRoots: this.runtimeWorkspaceRoots(),
       approvalPolicy: "on-request",
       approvalsReviewer: "user",
       permissions: "obsidian-vault",
@@ -234,7 +264,7 @@ export class CodexClient {
         web_search: "disabled",
         permissions: {
           "obsidian-vault": {
-            filesystem: { ":root": "read" },
+            filesystem: this.filesystemPermissions(),
             network: { enabled: false }
           }
         }
@@ -242,9 +272,37 @@ export class CodexClient {
     };
   }
 
+  private runtimeWorkspaceRoots(): string[] {
+    const roots = [this.vaultRoot, ...this.workspaceAccess.workspaceRoots];
+    return roots.filter((path, index) =>
+      roots.findIndex((candidate) => candidate.toLowerCase() === path.toLowerCase()) === index
+    );
+  }
+
+  private filesystemPermissions(): Record<string, "read" | "write"> {
+    return Object.fromEntries([
+      [":root", "read"] as const,
+      ...this.workspaceAccess.writablePaths.map((path) => [path, "write"] as const)
+    ]);
+  }
+
   private handleNotification(notification: RpcNotification): void {
     if (this.startingTurn !== null && belongsToThread(notification, this.startingTurn.threadId)) {
       this.startingTurn.notifications.push(notification);
+      return;
+    }
+    if (notification.method === "item/fileChange/patchUpdated") {
+      const event = parseFileChangePatchUpdated(notification.params);
+      if (event !== null) {
+        this.fileChanges.set(event.itemId, {
+          turnId: event.turnId,
+          changes: event.changes
+        });
+        const detail = toApprovalDetail(event.changes, this.vaultRoot);
+        for (const handler of this.fileDetailHandlers.get(event.itemId) ?? []) {
+          handler(detail);
+        }
+      }
       return;
     }
     if (notification.method === "item/agentMessage/delta" && isAgentMessageDelta(notification.params)) {
@@ -273,6 +331,12 @@ export class CodexClient {
     ) {
       return;
     }
+    for (const [itemId, entry] of this.fileChanges) {
+      if (entry.turnId === event.turn.id) {
+        this.fileChanges.delete(itemId);
+        this.fileDetailHandlers.delete(itemId);
+      }
+    }
     this.pendingTurn = null;
     if (event.turn.status === "completed" || event.turn.status === "interrupted") {
       pending.resolve({ turnId: event.turn.id, status: event.turn.status });
@@ -289,12 +353,74 @@ export class CodexClient {
       this.rpc.respondError(request.id, -32601, "Method not found");
       return;
     }
-    const prompt = toApprovalPrompt(request);
-    const choice = await this.approvalHandler(prompt);
-    this.rpc.respond(request.id, { decision: choice === "allowOnce" ? "accept" : "decline" });
-    if (choice === "deny") {
-      await this.interrupt();
+    const params = isRecord(request.params) ? request.params : {};
+    const itemId = request.method === "item/fileChange/requestApproval" &&
+      typeof params.itemId === "string"
+      ? params.itemId
+      : null;
+    const prompt = this.toApprovalPrompt(request);
+    try {
+      const choice = await this.approvalHandler(prompt);
+      this.rpc.respond(request.id, { decision: choice === "allowOnce" ? "accept" : "decline" });
+      if (choice === "deny") {
+        await this.interrupt();
+      }
+    } finally {
+      if (itemId !== null) {
+        this.fileChanges.delete(itemId);
+        this.fileDetailHandlers.delete(itemId);
+      }
     }
+  }
+
+  private toApprovalPrompt(request: RpcRequest): ApprovalPrompt {
+    const params = isRecord(request.params) ? request.params : {};
+    const reason = typeof params.reason === "string" ? params.reason : null;
+    if (request.method === "item/commandExecution/requestApproval") {
+      return {
+        requestId: request.id,
+        kind: "command",
+        title: "运行外部命令",
+        detail: formatDetail(params.command),
+        diff: null,
+        reason
+      };
+    }
+    const itemId = typeof params.itemId === "string" ? params.itemId : null;
+    const cached = itemId === null ? undefined : this.fileChanges.get(itemId);
+    const initial = cached === undefined
+      ? { detail: "正在获取变更概述", diff: null }
+      : toApprovalDetail(cached.changes, this.vaultRoot);
+    return {
+      requestId: request.id,
+      kind: "fileChange",
+      title: "修改文件",
+      ...initial,
+      reason,
+      ...(itemId === null ? {} : {
+        subscribeDetail: (handler: (detail: ApprovalDetail) => void) =>
+          this.subscribeFileDetail(itemId, handler)
+      })
+    };
+  }
+
+  private subscribeFileDetail(
+    itemId: string,
+    handler: (detail: ApprovalDetail) => void
+  ): () => void {
+    const handlers = this.fileDetailHandlers.get(itemId) ?? new Set();
+    handlers.add(handler);
+    this.fileDetailHandlers.set(itemId, handlers);
+    const cached = this.fileChanges.get(itemId);
+    if (cached !== undefined) {
+      handler(toApprovalDetail(cached.changes, this.vaultRoot));
+    }
+    return () => {
+      handlers.delete(handler);
+      if (handlers.size === 0) {
+        this.fileDetailHandlers.delete(itemId);
+      }
+    };
   }
 
   private ensureInitialized(): void {
@@ -312,25 +438,9 @@ export class CodexClient {
   }
 }
 
-function toApprovalPrompt(request: RpcRequest): ApprovalPrompt {
-  const params = isRecord(request.params) ? request.params : {};
-  const reason = typeof params.reason === "string" ? params.reason : null;
-  if (request.method === "item/commandExecution/requestApproval") {
-    return {
-      requestId: request.id,
-      kind: "command",
-      title: "运行外部命令",
-      detail: formatDetail(params.command),
-      reason
-    };
-  }
-  return {
-    requestId: request.id,
-    kind: "fileChange",
-    title: "修改文件",
-    detail: formatDetail(params.changes),
-    reason
-  };
+function toApprovalDetail(changes: FileUpdateChange[], cwd: string): ApprovalDetail {
+  const detail = summarizeFileChanges(changes, cwd);
+  return { detail: detail.summary, diff: detail.diff };
 }
 
 function formatDetail(value: unknown): string {

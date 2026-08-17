@@ -33,12 +33,17 @@ export interface SaveResultOutcome {
   linkError: string | null;
 }
 
-export interface ApprovalPrompt {
+export interface ApprovalDetail {
+  detail: string;
+  diff: string | null;
+}
+
+export interface ApprovalPrompt extends ApprovalDetail {
   requestId: string | number;
   kind: "command" | "fileChange";
   title: string;
-  detail: string;
   reason: string | null;
+  subscribeDetail?: (handler: (detail: ApprovalDetail) => void) => () => void;
 }
 
 export interface HealthStatus {

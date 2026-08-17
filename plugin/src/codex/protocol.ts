@@ -63,9 +63,30 @@ export interface CommandApprovalRequest {
   reason?: string | null;
 }
 
+export type PatchChangeKind =
+  | { type: "add" }
+  | { type: "delete" }
+  | { type: "update"; move_path: string | null };
+
+export interface FileUpdateChange {
+  path: string;
+  kind: PatchChangeKind;
+  diff: string;
+}
+
+export interface FileChangePatchUpdated {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  changes: FileUpdateChange[];
+}
+
 export interface FileChangeApprovalRequest {
-  changes?: unknown;
+  threadId?: string;
+  turnId?: string;
+  itemId?: string;
   reason?: string | null;
+  grantRoot?: string | null;
 }
 
 export type ApprovalDecision = "accept" | "decline" | "cancel";
